@@ -51,7 +51,7 @@ output:
   hub_model_id: null
 
 eval:
-  max_new_tokens: 512
+  max_new_tokens: 1792      # long eligibility answers need headroom — see qlora_sft.yaml
   temperature: 0.0
   num_samples: null
 

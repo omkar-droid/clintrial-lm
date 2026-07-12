@@ -60,7 +60,10 @@ output:
   hub_model_id: null        # e.g. "omkar/clintrial-qwen2.5-7b-sft" to push
 
 eval:
-  max_new_tokens: 512
+  # Must exceed the longest reference answer. Eligibility extractions reach ~1.7k
+  # tokens; a 512 cap silently truncated ~15% of them mid-JSON, which capped
+  # JSON-validity at 0.84 for EVERY model. Classic evaluation bug.
+  max_new_tokens: 1792
   temperature: 0.0
   num_samples: null         # null = full test set; set an int for a quick pass
 

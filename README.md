@@ -26,14 +26,15 @@ Measured on a **held-out test set split by trial** (no trial appears in both tra
 
 | Task | Metric | Base Qwen2.5-7B | **SFT (QLoRA)** | GRPO (RLVR) |
 |---|---|---|---|---|
-| Phase classification | exact match | 0.000 | **0.794** | **0.804** |
-| Condition Q&A | token F1 | 0.298 | **0.742** | **0.748** |
-| Eligibility extraction | criterion F1 | 0.728 | **0.821** | 0.820 |
+| Eligibility extraction | criterion F1 | 0.840 | **0.968** | 0.968 |
+| Eligibility output | **JSON validity** | 0.986 | **1.000** | 1.000 |
+| Phase classification | exact match | 0.000 | **0.794** | 0.804 |
+| Condition Q&A | token F1 | 0.298 | **0.742** | 0.748 |
 | Plain-language summary | ROUGE-L | 0.195 | **0.290** | 0.289 |
-| Eligibility output | JSON validity | 0.843 | 0.843 | 0.843 |
 
-**SFT delivered the step change** (phase classification went from *completely unusable* to 79%).
-**GRPO matched it with a small edge on two tasks** — an honest result, discussed below.
+**SFT delivered the step change**: phase classification went from *completely unusable* to 79%, and
+eligibility extraction reached **0.968 F1 with 100% valid JSON** (precision 0.962 / recall 0.978).
+**GRPO matched it** with a small edge on two tasks — an honest result, discussed below.
 
 ### Why the base model scored 0.00 on phase classification
 It isn't ignorant — it's **undisciplined**. It knows the answer but won't answer in the required format:
@@ -54,7 +55,38 @@ correctly returned `Na`. Fine-tuning buys **format discipline and faithfulness**
 |---|---|
 | ![SFT loss](assets/sft_loss_curve.png) | ![GRPO reward](assets/grpo_reward_curve.png) |
 
-### 🔍 The most interesting finding: the SFT run overfit — and the config caught it
+---
+
+## 🐛 Finding #1: a metric that looked stuck was a broken ruler, not a broken model
+
+The first evaluation reported **JSON validity = 0.843 — *identical* across base, SFT, and GRPO.**
+Three architecturally different policies scoring exactly 118/140 is statistically implausible. That
+smelled like a bug, so I measured the reference answers:
+
+```
+Eligibility reference answers:  median 181 tokens · p90 711 · max 1664
+Generation cap (max_new_tokens): 512
+References exceeding the cap:    15.0%
+Observed JSON-invalid rate:      15.7%   ← the same number
+```
+
+The eval was **truncating 15% of outputs mid-JSON**, so they couldn't parse. No amount of SFT or RL
+could ever have fixed it — **the ceiling was in the measuring tape.** Raising the cap to 1792:
+
+| | Buggy eval (512) | **Fixed eval (1792)** |
+|---|---|---|
+| SFT — eligibility F1 | 0.821 | **0.968** |
+| SFT — JSON validity | 0.843 | **1.000** |
+
+The broken eval was *understating the model's own gains*: SFT's contribution to eligibility
+extraction was really **0.840 → 0.968**, not 0.728 → 0.821.
+
+**Takeaway: when a metric refuses to move, suspect the metric.** An identical score across
+different models is a bug signature, not a coincidence.
+
+---
+
+## 🔍 Finding #2: the SFT run overfit — and the config caught it
 Look at the left chart. **Train loss falls (2.57 → 0.65) while eval loss *rises* (1.05 → 1.21) after
 step ~500.** That's textbook overfitting: past ~0.6 of one epoch the model began memorising.
 
@@ -125,13 +157,17 @@ policy toward the above-average ones (group-relative advantage → no value netw
 Mean reward climbed **0.26 → ~0.60**.
 
 ### Honest result: GRPO did not beat a strong SFT baseline
-It gained +0.010 on phase and +0.006 on condition, and **did not move JSON validity (0.843)**. Why:
+It gained **+0.010 on phase** and **+0.006 on condition**, and matched SFT elsewhere. Why:
+- **The SFT baseline left almost no headroom.** After the evaluation fix above, SFT already scored
+  **0.968 F1 with 100% valid JSON** on the flagship task. A large slice of the reward function was
+  effectively **saturated before RL even started**.
+- **`frac_reward_zero_std ≈ 0.3`** — on ~30% of prompts all 8 sampled answers scored *identically*,
+  so those steps produced **zero gradient signal**. Little variance ⇒ little to learn from.
 - **Short, conservative run** — 200 steps, LR `1e-6`, KL `beta=0.04`, which by design keeps the
-  policy very close to the SFT reference.
-- **The SFT baseline was already strong** (0.74–0.82); RL squeezing more out of an already-good
-  policy is genuinely hard.
-- **`frac_reward_zero_std ≈ 0.3`** — on ~30% of prompts all 8 samples scored *identically*, giving
-  those steps **zero gradient signal**.
+  policy close to the SFT reference.
+
+The lesson is a real one: **RL is not a free upgrade.** It pays off where a policy has room to
+improve and the reward can *discriminate* between samples. Here, SFT had already won.
 
 This is reported rather than buried. Knowing *why* an RL run was flat is more valuable than a
 suspicious jump. Next levers: higher LR, lower KL, more steps, vLLM-backed generation for faster
@@ -152,7 +188,8 @@ iteration, and reward shaping focused on the tasks with real headroom.
 | HF ecosystem (Transformers / TRL / PEFT / Accelerate) | throughout |
 | Model evaluation, LLM-as-judge | [`src/evaluate.py`](src/evaluate.py) |
 | Experiment tracking (Weights & Biases) | [`scripts/log_to_wandb.py`](scripts/log_to_wandb.py) |
-| Diagnosing overfitting from curves | see finding above |
+| **Debugging a silent evaluation bug** | [Finding #1](#-finding-1-a-metric-that-looked-stuck-was-a-broken-ruler-not-a-broken-model) |
+| Diagnosing overfitting from loss curves | [Finding #2](#-finding-2-the-sft-run-overfit--and-the-config-caught-it) |
 | Inference optimization & serving (vLLM), GGUF/AWQ export | [`src/serve_vllm.py`](src/serve_vllm.py), [`src/merge_and_export.py`](src/merge_and_export.py) |
 | Reproducibility / MLOps (configs, Docker, seeds, Makefile) | [`Dockerfile`](Dockerfile), [`Makefile`](Makefile) |
 
@@ -187,9 +224,13 @@ data/          build_dataset.py · dataset card
 src/           train_sft · train_grpo · rewards · train_dpo
                evaluate · merge_and_export · serve_vllm · utils
 scripts/       setup_h100 · make_report · make_plots · log_to_wandb
+notebooks/     demo.ipynb — load the model and run all four tasks
 results/       metrics_*.json · REPORT.md · qualitative examples
 assets/        loss + reward curves
 ```
+
+**Try it:** [`notebooks/demo.ipynb`](notebooks/demo.ipynb) loads the fine-tuned model and runs all
+four tasks end-to-end.
 
 ## Engineering decisions worth defending
 
@@ -212,10 +253,12 @@ runs the whole data stage with no network and no GPU, so the pipeline is CI-test
 
 ## Limitations & next steps
 
-- [ ] SFT overfits after ~1 epoch → retrain with early stopping (expected further gains)
-- [ ] JSON validity plateaus at 0.84 → stricter format reward / constrained decoding
-- [ ] GRPO needs longer runs + vLLM-backed generation to beat SFT
-- [ ] Preference data for DPO is perturbation-based; real human/reward-model labels would be better
+- [x] ~~JSON validity plateaus at 0.84~~ → **was an eval truncation bug; now 1.000**
+- [ ] Summary quality (ROUGE-L 0.29) is the weakest task — the most real headroom left
+- [ ] SFT overfits after ~1 epoch; the true fix is **more data** (8k of ~500k trials were used),
+      not fewer epochs — best-checkpoint selection already captures the optimum
+- [ ] GRPO needs longer runs, higher LR and vLLM-backed generation to beat a saturated SFT baseline
+- [ ] Preference data for DPO is perturbation-based; human/reward-model labels would be better
 - [ ] Multi-GPU FSDP for scaling to a 70B base
 
 ## License
