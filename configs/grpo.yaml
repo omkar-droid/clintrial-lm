@@ -1,0 +1,60 @@
+# GRPO (RL with Verifiable Rewards) on top of the merged SFT policy.
+# Uses bf16 (not 4-bit) because GRPO generates many samples per step and bf16
+# generation is faster — the H100 has plenty of memory for a 7B in bf16.
+experiment: grpo
+
+model:
+  base_model_id: merged/qlora-sft     # start from the SFT policy (run `make merge-sft` first)
+  attn_implementation: flash_attention_2
+  max_seq_length: 2048
+
+quantization:
+  load_in_4bit: false
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  bias: none
+  task_type: CAUSAL_LM
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+
+data:
+  train_file: data/processed/train.jsonl
+  test_file: data/processed/test.jsonl
+  max_prompts: 3000          # subset of prompts to sample from during RL
+
+grpo:
+  num_generations: 8         # group size — completions sampled per prompt
+  max_completion_length: 256
+  temperature: 0.9           # exploration during sampling
+  beta: 0.04                 # KL penalty to the SFT reference
+
+training:
+  output_dir: outputs/grpo
+  learning_rate: 1.0e-6      # RL wants a very small LR
+  lr_scheduler_type: cosine
+  warmup_ratio: 0.05
+  max_grad_norm: 0.2
+  per_device_train_batch_size: 8   # must be divisible by num_generations
+  gradient_accumulation_steps: 2
+  max_steps: 200
+  logging_steps: 5
+  save_steps: 100
+  save_total_limit: 2
+  gradient_checkpointing: true
+  bf16: true
+  seed: 42
+
+output:
+  merged_dir: merged/grpo
+  hub_model_id: null
+
+eval:
+  max_new_tokens: 512
+  temperature: 0.0
+  num_samples: null
+
+wandb:
+  project: clintrial-lm
+  run_name: grpo

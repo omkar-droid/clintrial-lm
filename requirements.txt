@@ -1,0 +1,29 @@
+# Core training stack — tested with the versions below on CUDA 12.1 / H100.
+# torch is intentionally unpinned: install the build that matches your CUDA/driver first
+# (e.g. `pip install torch --index-url https://download.pytorch.org/whl/cu121`).
+torch>=2.4
+transformers>=4.45
+trl>=0.12
+peft>=0.13
+accelerate>=1.0
+datasets>=3.0
+bitsandbytes>=0.44          # 4-bit NF4 quantization for QLoRA
+sentencepiece>=0.2
+protobuf>=4.25
+
+# Data pipeline
+requests>=2.31
+tqdm>=4.66
+
+# Evaluation
+rouge-score>=0.1.2
+numpy>=1.26
+scikit-learn>=1.4
+
+# Experiment tracking
+wandb>=0.17
+
+# Optional: flash-attention 2 (big speedup on H100). Install separately, it needs a build step:
+#   pip install flash-attn --no-build-isolation
+# Optional: LLM-as-judge via Anthropic API (used only if ANTHROPIC_API_KEY is set)
+#   pip install anthropic

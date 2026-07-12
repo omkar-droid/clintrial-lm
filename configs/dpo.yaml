@@ -1,0 +1,69 @@
+# DPO preference tuning on top of the merged SFT model. Teaches the model to
+# prefer faithful, complete clinical-trial answers over hallucinated / truncated
+# ones. Uses QLoRA (4-bit) so the policy + implicit reference fit on one H100.
+experiment: dpo
+
+model:
+  # Start from the merged SFT checkpoint produced by `make merge-sft`.
+  base_model_id: merged/qlora-sft
+  attn_implementation: flash_attention_2
+  max_seq_length: 2048
+
+quantization:
+  load_in_4bit: true
+  bnb_4bit_quant_type: nf4
+  bnb_4bit_compute_dtype: bfloat16
+  bnb_4bit_use_double_quant: true
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  bias: none
+  task_type: CAUSAL_LM
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+
+data:
+  train_file: data/processed/dpo_train.jsonl
+  val_file: data/processed/dpo_val.jsonl
+  test_file: data/processed/test.jsonl
+
+dpo:
+  beta: 0.1                  # KL strength — lower lets the policy move further from the reference
+  max_prompt_length: 1024
+
+training:
+  output_dir: outputs/dpo
+  num_train_epochs: 1
+  per_device_train_batch_size: 4
+  per_device_eval_batch_size: 4
+  gradient_accumulation_steps: 8
+  learning_rate: 5.0e-6       # DPO wants a much smaller LR than SFT
+  lr_scheduler_type: cosine
+  warmup_ratio: 0.1
+  weight_decay: 0.0
+  max_grad_norm: 0.3
+  logging_steps: 10
+  eval_strategy: steps
+  eval_steps: 100
+  save_strategy: steps
+  save_steps: 100
+  save_total_limit: 2
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+  gradient_checkpointing: true
+  bf16: true
+  seed: 42
+
+output:
+  merged_dir: merged/dpo
+  hub_model_id: null
+
+eval:
+  max_new_tokens: 512
+  temperature: 0.0
+  num_samples: null
+
+wandb:
+  project: clintrial-lm
+  run_name: dpo

@@ -1,0 +1,62 @@
+# bf16 LoRA (no quantization) comparison run. Same data/hyperparameters as the
+# QLoRA config so the two are directly comparable in the results table:
+# QLoRA trades a little quality/speed for a much smaller memory footprint.
+experiment: lora-sft
+
+model:
+  base_model_id: Qwen/Qwen2.5-7B-Instruct   # Apache-2.0, no gating
+  attn_implementation: flash_attention_2
+  max_seq_length: 2048
+
+quantization:
+  load_in_4bit: false        # full bf16 weights — needs more VRAM, still fine on H100 80GB
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  bias: none
+  task_type: CAUSAL_LM
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+
+data:
+  train_file: data/processed/train.jsonl
+  val_file: data/processed/val.jsonl
+  test_file: data/processed/test.jsonl
+
+training:
+  output_dir: outputs/lora-sft
+  num_train_epochs: 3
+  per_device_train_batch_size: 8
+  per_device_eval_batch_size: 8
+  gradient_accumulation_steps: 4
+  learning_rate: 2.0e-4
+  lr_scheduler_type: cosine
+  warmup_ratio: 0.03
+  weight_decay: 0.0
+  max_grad_norm: 0.3
+  logging_steps: 10
+  eval_strategy: steps
+  eval_steps: 100
+  save_strategy: steps
+  save_steps: 100
+  save_total_limit: 2
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+  packing: false          # enable with flash-attention for safe cross-sample masking
+  gradient_checkpointing: true
+  bf16: true
+  seed: 42
+
+output:
+  merged_dir: merged/lora-sft
+  hub_model_id: null
+
+eval:
+  max_new_tokens: 512
+  temperature: 0.0
+  num_samples: null
+
+wandb:
+  project: clintrial-lm
+  run_name: lora-sft

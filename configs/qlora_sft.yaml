@@ -1,0 +1,69 @@
+# QLoRA supervised fine-tuning of Llama-3.1-8B-Instruct on the clinical-trial
+# instruction dataset. 4-bit NF4 base + LoRA adapter. Fits comfortably on one H100.
+experiment: qlora-sft
+
+model:
+  base_model_id: Qwen/Qwen2.5-7B-Instruct   # Apache-2.0, no gating
+  attn_implementation: flash_attention_2     # falls back to "sdpa" if flash-attn is not installed
+  max_seq_length: 2048
+
+quantization:
+  load_in_4bit: true
+  bnb_4bit_quant_type: nf4
+  bnb_4bit_compute_dtype: bfloat16
+  bnb_4bit_use_double_quant: true
+
+lora:
+  r: 16
+  alpha: 32
+  dropout: 0.05
+  bias: none
+  task_type: CAUSAL_LM
+  target_modules: [q_proj, k_proj, v_proj, o_proj, gate_proj, up_proj, down_proj]
+
+data:
+  train_file: data/processed/train.jsonl
+  val_file: data/processed/val.jsonl
+  test_file: data/processed/test.jsonl
+
+training:
+  output_dir: outputs/qlora-sft
+  num_train_epochs: 3
+  per_device_train_batch_size: 8
+  per_device_eval_batch_size: 8
+  gradient_accumulation_steps: 4          # effective batch size = 32
+  # NB: without flash-attn packing or group_by_length, a smaller micro-batch pads
+  # fewer tokens per step and is actually faster here than batch 16.
+  learning_rate: 2.0e-4
+  lr_scheduler_type: cosine
+  warmup_ratio: 0.03
+  weight_decay: 0.0
+  max_grad_norm: 0.3
+  logging_steps: 10
+  eval_strategy: steps
+  eval_steps: 500
+  save_strategy: steps
+  save_steps: 500
+  save_total_limit: 2
+  load_best_model_at_end: true
+  metric_for_best_model: eval_loss
+  # packing concatenates samples for ~1.5-2x throughput, but needs a flash-attention
+  # build for correct cross-sample masking. Left off here (flash-attn unavailable);
+  # turn on together with attn_implementation=flash_attention_2 for speed.
+  packing: false
+  gradient_checkpointing: true
+  bf16: true
+  seed: 42
+
+output:
+  merged_dir: merged/qlora-sft
+  hub_model_id: null        # e.g. "omkar/clintrial-qwen2.5-7b-sft" to push
+
+eval:
+  max_new_tokens: 512
+  temperature: 0.0
+  num_samples: null         # null = full test set; set an int for a quick pass
+
+wandb:
+  project: clintrial-lm
+  run_name: qlora-sft

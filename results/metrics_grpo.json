@@ -1,0 +1,31 @@
+{
+  "run_name": "grpo",
+  "which": "adapter",
+  "model": "merged/qlora-sft",
+  "n_test": 500,
+  "metrics": {
+    "condition_qa": {
+      "rouge1": 0.7557,
+      "rougeL": 0.7371,
+      "token_f1": 0.7477,
+      "n": 130
+    },
+    "phase_classification": {
+      "exact_match": 0.8037,
+      "n": 107
+    },
+    "plain_language_summary": {
+      "rouge1": 0.3796,
+      "rougeL": 0.289,
+      "token_f1": 0.3643,
+      "n": 123
+    },
+    "extract_eligibility": {
+      "precision": 0.8158,
+      "recall": 0.8281,
+      "f1": 0.8204,
+      "json_valid": 0.8429,
+      "n": 140
+    }
+  }
+}
