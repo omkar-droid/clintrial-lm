@@ -8,11 +8,15 @@ reproducible LLM pipeline run end-to-end on **a single H100**:
 Four tasks: plain-language trial summaries, structured eligibility-criteria extraction,
 condition Q&A, and phase classification.
 
+[![Model on HF](https://img.shields.io/badge/🤗%20Model-clintrial--qwen2.5--7b--sft-yellow)](https://huggingface.co/OmkarShewale/clintrial-qwen2.5-7b-sft)
 ![Python](https://img.shields.io/badge/python-3.11-blue)
 ![PEFT](https://img.shields.io/badge/PEFT-LoRA%20%7C%20QLoRA-orange)
 ![TRL](https://img.shields.io/badge/TRL-SFT%20%2B%20GRPO-green)
 ![RLVR](https://img.shields.io/badge/RL-Verifiable%20Rewards-purple)
 ![License](https://img.shields.io/badge/license-MIT-black)
+
+**🤗 Fine-tuned model:** [`OmkarShewale/clintrial-qwen2.5-7b-sft`](https://huggingface.co/OmkarShewale/clintrial-qwen2.5-7b-sft)
+· **▶️ Try it:** [`notebooks/demo.ipynb`](notebooks/demo.ipynb)
 
 > ⚕️ Research/education demo. Outputs are **not medical advice**.
 
