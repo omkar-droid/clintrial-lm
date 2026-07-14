@@ -1,0 +1,14 @@
+{
+  "run_name": "nf4",
+  "quant": "nf4",
+  "model_path": "merged/qlora-sft",
+  "disk_size_gb": 15.24,
+  "weights_vram_gb": 5.56,
+  "peak_vram_gb": 5.81,
+  "load_seconds": 2.5,
+  "ttft_ms_mean": 49.3,
+  "decode_tok_per_s_mean": 30.8,
+  "aggregate_tok_per_s": 32.4,
+  "n_prompts": 20,
+  "max_new_tokens": 256
+}

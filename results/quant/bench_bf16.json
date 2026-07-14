@@ -1,0 +1,14 @@
+{
+  "run_name": "bf16",
+  "quant": "bf16",
+  "model_path": "merged/qlora-sft",
+  "disk_size_gb": 15.24,
+  "weights_vram_gb": 15.23,
+  "peak_vram_gb": 15.36,
+  "load_seconds": 1.2,
+  "ttft_ms_mean": 21.1,
+  "decode_tok_per_s_mean": 56.9,
+  "aggregate_tok_per_s": 57.8,
+  "n_prompts": 20,
+  "max_new_tokens": 256
+}

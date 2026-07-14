@@ -1,0 +1,14 @@
+{
+  "run_name": "awq",
+  "quant": "awq",
+  "model_path": "merged/qlora-sft-awq",
+  "disk_size_gb": 5.58,
+  "weights_vram_gb": 5.63,
+  "peak_vram_gb": 6.72,
+  "load_seconds": 4.8,
+  "ttft_ms_mean": 62.4,
+  "decode_tok_per_s_mean": 16.1,
+  "aggregate_tok_per_s": 10.6,
+  "n_prompts": 20,
+  "max_new_tokens": 256
+}

@@ -1,0 +1,14 @@
+{
+  "run_name": "int8",
+  "quant": "int8",
+  "model_path": "merged/qlora-sft",
+  "disk_size_gb": 15.24,
+  "weights_vram_gb": 8.71,
+  "peak_vram_gb": 9.14,
+  "load_seconds": 7.1,
+  "ttft_ms_mean": 110.9,
+  "decode_tok_per_s_mean": 11.0,
+  "aggregate_tok_per_s": 11.3,
+  "n_prompts": 20,
+  "max_new_tokens": 256
+}

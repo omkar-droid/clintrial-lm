@@ -3,10 +3,11 @@
 Turns **Qwen2.5-7B-Instruct** into a specialist clinical-trial assistant, via a complete,
 reproducible LLM pipeline run end-to-end on **a single H100**:
 
-> **data curation → SFT (QLoRA) → GRPO / RL with Verifiable Rewards → evaluation → serving**
+> **data curation → SFT (QLoRA) → GRPO / RL with Verifiable Rewards → evaluation → quantization → serving**
 
 Four tasks: plain-language trial summaries, structured eligibility-criteria extraction,
-condition Q&A, and phase classification.
+condition Q&A, and phase classification. Plus a **quantization study** measuring the
+accuracy/speed/memory trade-off of INT8, NF4, and AWQ 4-bit.
 
 [![Model on HF](https://img.shields.io/badge/🤗%20Model-clintrial--qwen2.5--7b--sft-yellow)](https://huggingface.co/OmkarShewale/clintrial-qwen2.5-7b-sft)
 ![Python](https://img.shields.io/badge/python-3.11-blue)
@@ -173,6 +174,48 @@ It gained **+0.010 on phase** and **+0.006 on condition**, and matched SFT elsew
 The lesson is a real one: **RL is not a free upgrade.** It pays off where a policy has room to
 improve and the reward can *discriminate* between samples. Here, SFT had already won.
 
+---
+
+## Compression: how small/fast can we make it, and at what accuracy cost?
+
+The question every team asks before deploying: *can we run this cheaper without it getting dumber?*
+Each quantization mode is measured on **both** axes — inference cost (`src/benchmark.py`) and
+accuracy on the same held-out test set (`src/evaluate.py --quant ...`).
+
+| Method | Disk | Peak VRAM | TTFT | Decode | Eligibility F1 | Quality kept |
+|---|---|---|---|---|---|---|
+| bf16 (baseline) | 15.2 GB | 15.4 GB | 21 ms | **57 tok/s** | 0.967 | 100.0% |
+| INT8 (bitsandbytes) | 15.2 GB | 9.1 GB | 111 ms | 11 tok/s | 0.968 | 100.0% |
+| **NF4 4-bit (bitsandbytes)** | 15.2 GB | **5.8 GB** | 49 ms | 31 tok/s | 0.963 | **99.6%** |
+| AWQ 4-bit (calibrated) | **5.6 GB** | 6.7 GB | 62 ms | 16 tok/s | 0.951 | 98.3% |
+
+![Quantization trade-off](assets/quant_tradeoff.png)
+
+### Finding #3: on an H100 at batch-1, quantization buys *capacity*, not *speed*
+
+The naive belief is "4-bit = faster." The data says the opposite here — **bf16 is the fastest
+option**, and every quantized mode is slower. Why: an H100 has enormous compute and bandwidth, so a
+7B in bf16 is not bottlenecked; meanwhile every 4-/8-bit method must **de-quantize weights back to
+bf16 on each forward pass**, and with reference loaders (bitsandbytes, autoawq) that overhead
+*costs* more than the smaller footprint saves at batch 1.
+
+So the real value of quantization on a big GPU is **fitting the model**, not accelerating it:
+**NF4 runs the fine-tuned model in 5.8 GB — a consumer 8 GB card — while keeping 99.6% of the F1.**
+The **speed** benefit of 4-bit appears elsewhere: under memory pressure (larger batches, longer
+context, smaller GPUs) and with inference-optimized kernels (vLLM's Marlin/AWQ on Hopper), *not*
+with the reference dequant loaders benchmarked here. AWQ underperformed precisely because its
+reference kernel is not tuned for this GPU — the checkpoint is small, but you need the right engine
+to make it fast.
+
+**Deployment guidance this produces:**
+- **Latency-critical on a big GPU** → bf16
+- **Fit on a small/cheap GPU with ~full accuracy** → NF4 (5.8 GB, 99.6%)
+- **Throughput serving** → AWQ/GPTQ checkpoint behind **vLLM** (optimized kernels) — the natural next step
+
+> ⚠️ Reproducibility note: installing `gptqmodel` silently upgrades torch (2.6→2.13) and breaks the
+> pinned environment. This project loads AWQ via `autoawq`'s own loader and **pins torch first** —
+> a reminder that quantization tooling has sharp dependency edges.
+
 This is reported rather than buried. Knowing *why* an RL run was flat is more valuable than a
 suspicious jump. Next levers: higher LR, lower KL, more steps, vLLM-backed generation for faster
 iteration, and reward shaping focused on the tasks with real headroom.
@@ -194,6 +237,8 @@ iteration, and reward shaping focused on the tasks with real headroom.
 | Experiment tracking (Weights & Biases) | [`scripts/log_to_wandb.py`](scripts/log_to_wandb.py) |
 | **Debugging a silent evaluation bug** | [Finding #1](#-finding-1-a-metric-that-looked-stuck-was-a-broken-ruler-not-a-broken-model) |
 | Diagnosing overfitting from loss curves | [Finding #2](#-finding-2-the-sft-run-overfit--and-the-config-caught-it) |
+| **Quantization (INT8 / NF4 / AWQ)** + inference benchmarking | [`src/quantize.py`](src/quantize.py), [`src/benchmark.py`](src/benchmark.py) |
+| Reasoning about latency vs capacity trade-offs | [Finding #3](#finding-3-on-an-h100-at-batch-1-quantization-buys-capacity-not-speed) |
 | Inference optimization & serving (vLLM), GGUF/AWQ export | [`src/serve_vllm.py`](src/serve_vllm.py), [`src/merge_and_export.py`](src/merge_and_export.py) |
 | Reproducibility / MLOps (configs, Docker, seeds, Makefile) | [`Dockerfile`](Dockerfile), [`Makefile`](Makefile) |
 
@@ -226,11 +271,11 @@ python src/train_sft.py --config configs/qlora_sft.yaml --set training.learning_
 configs/       qlora_sft · lora_sft · grpo · dpo      (every knob lives here)
 data/          build_dataset.py · dataset card
 src/           train_sft · train_grpo · rewards · train_dpo
-               evaluate · merge_and_export · serve_vllm · utils
-scripts/       setup_h100 · make_report · make_plots · log_to_wandb
+               evaluate · quantize · benchmark · merge_and_export · serve_vllm · utils
+scripts/       setup_h100 · make_report · make_quant_report · make_plots · make_quant_plot · log_to_wandb
 notebooks/     demo.ipynb — load the model and run all four tasks
-results/       metrics_*.json · REPORT.md · qualitative examples
-assets/        loss + reward curves
+results/       metrics_*.json · REPORT.md · quant/ · QUANT_REPORT.md · qualitative examples
+assets/        loss + reward curves + quantization trade-off
 ```
 
 **Try it:** [`notebooks/demo.ipynb`](notebooks/demo.ipynb) loads the fine-tuned model and runs all

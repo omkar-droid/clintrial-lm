@@ -87,6 +87,57 @@ def build_bnb_config(cfg: SimpleNamespace):
     )
 
 
+def build_quant_config(mode: str):
+    """Quantization config by name, for the compression benchmark.
+
+    bf16 = no quantization. nf4/int8 are applied at load time by bitsandbytes.
+    AWQ/GPTQ checkpoints carry their own quant config, so they need none here.
+    """
+    import torch
+    from transformers import BitsAndBytesConfig
+
+    if mode == "nf4":
+        return BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type="nf4",
+            bnb_4bit_compute_dtype=torch.bfloat16,
+            bnb_4bit_use_double_quant=True,
+        )
+    if mode == "int8":
+        return BitsAndBytesConfig(load_in_8bit=True)
+    return None
+
+
+def load_model_for_inference(model_path: str, quant: str, base_model_id: str,
+                             attn_implementation: str = "sdpa"):
+    """Load a model for benchmarking/eval under a given quantization mode.
+
+    AWQ is loaded through autoawq's own fused-kernel loader (fast, and avoids the
+    transformers<->gptqmodel dependency that upgrades torch). bf16/nf4/int8 go
+    through the standard Transformers loader.
+    """
+    import torch
+    from transformers import AutoModelForCausalLM
+
+    if quant == "awq":
+        from awq import AutoAWQForCausalLM
+
+        model = AutoAWQForCausalLM.from_quantized(model_path, fuse_layers=True,
+                                                  device_map={"": 0}, safetensors=True)
+        return model.model if hasattr(model, "model") else model
+
+    kwargs = dict(
+        dtype=torch.bfloat16,
+        attn_implementation=resolve_attn_implementation(attn_implementation),
+        device_map={"": 0},
+        token=os.environ.get("HF_TOKEN"),
+    )
+    qc = build_quant_config(quant)
+    if qc is not None:
+        kwargs["quantization_config"] = qc
+    return AutoModelForCausalLM.from_pretrained(model_path, **kwargs)
+
+
 def build_lora_config(cfg: SimpleNamespace):
     from peft import LoraConfig
 

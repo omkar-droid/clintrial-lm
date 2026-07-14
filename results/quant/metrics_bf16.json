@@ -1,0 +1,32 @@
+{
+  "run_name": "bf16",
+  "which": "merged",
+  "quant": "bf16",
+  "model": "Qwen/Qwen2.5-7B-Instruct",
+  "n_test": 200,
+  "metrics": {
+    "condition_qa": {
+      "rouge1": 0.7221,
+      "rougeL": 0.6964,
+      "token_f1": 0.7167,
+      "n": 44
+    },
+    "phase_classification": {
+      "exact_match": 0.9024,
+      "n": 41
+    },
+    "plain_language_summary": {
+      "rouge1": 0.3784,
+      "rougeL": 0.2833,
+      "token_f1": 0.3635,
+      "n": 53
+    },
+    "extract_eligibility": {
+      "precision": 0.9649,
+      "recall": 0.9723,
+      "f1": 0.9673,
+      "json_valid": 1.0,
+      "n": 62
+    }
+  }
+}

@@ -57,8 +57,18 @@ eval-dpo:         ## Evaluate the DPO model
 report:           ## Rebuild the results table from results/metrics_*.json
 	$(PYTHON) scripts/make_report.py | tee results/REPORT.md
 
-plots:            ## Regenerate the loss / reward curves in assets/
+quantize-awq:     ## Produce a calibrated AWQ 4-bit checkpoint from the merged model
+	$(PYTHON) src/quantize.py --config $(CONFIG_SFT) --method awq
+
+benchmark:        ## Benchmark inference cost for a quant mode: make benchmark Q=nf4
+	$(PYTHON) src/benchmark.py --config $(CONFIG_SFT) --quant $(or $(Q),bf16) --run-name $(or $(Q),bf16) --out-dir results/quant
+
+quant-report:     ## Join benchmark + accuracy into the quantization table
+	$(PYTHON) scripts/make_quant_report.py | tee results/QUANT_REPORT.md
+
+plots:            ## Regenerate all charts in assets/
 	$(PYTHON) scripts/make_plots.py
+	$(PYTHON) scripts/make_quant_plot.py
 
 serve:            ## Serve the merged model with vLLM (OpenAI-compatible API on :8000)
 	$(PYTHON) src/serve_vllm.py --config $(CONFIG_GRPO)

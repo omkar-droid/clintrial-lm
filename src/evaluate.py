@@ -23,7 +23,7 @@ from datasets import load_dataset
 from rouge_score import rouge_scorer
 from transformers import AutoModelForCausalLM
 
-from utils import load_config, load_tokenizer, resolve_attn_implementation, set_seed
+from utils import build_quant_config, load_config, load_model_for_inference, load_tokenizer, resolve_attn_implementation, set_seed
 
 _WORD = re.compile(r"[a-z0-9]+")
 
@@ -102,18 +102,23 @@ def criteria_prf(pred: str, ref: str) -> tuple[float, float, float, int]:
 # --------------------------------------------------------------------------- #
 # Model loading
 # --------------------------------------------------------------------------- #
-def load_model(cfg, which: str):
+def load_model(cfg, which: str, quant: str = "bf16", model_path: str | None = None):
     kwargs = dict(
         dtype=torch.bfloat16,
         attn_implementation=resolve_attn_implementation(cfg.model.attn_implementation),
         device_map={"": 0},
         token=os.environ.get("HF_TOKEN"),
     )
+    qc = build_quant_config(quant)
+    if qc is not None:
+        kwargs["quantization_config"] = qc
+
+    if which == "merged":
+        return load_model_for_inference(model_path or cfg.output.merged_dir, quant,
+                                        cfg.model.base_model_id, cfg.model.attn_implementation)
     base = AutoModelForCausalLM.from_pretrained(cfg.model.base_model_id, **kwargs)
     if which == "base":
         return base
-    if which == "merged":
-        return AutoModelForCausalLM.from_pretrained(cfg.output.merged_dir, **kwargs)
     # which == "adapter"
     from peft import PeftModel
 
@@ -146,6 +151,9 @@ def main() -> None:
     ap.add_argument("--which", choices=["base", "adapter", "merged"], default="adapter")
     ap.add_argument("--run-name", required=True)
     ap.add_argument("--num-samples", type=int, default=None, help="Override eval.num_samples (subset for a faster pass)")
+    ap.add_argument("--quant", choices=["bf16", "nf4", "int8", "awq", "gptq"], default="bf16",
+                    help="Quantization mode — measures accuracy retention under compression")
+    ap.add_argument("--model-path", default=None, help="Explicit model dir (e.g. an AWQ checkpoint)")
     ap.add_argument("--judge", action="store_true", help="Add LLM-as-judge faithfulness (needs ANTHROPIC_API_KEY)")
     ap.add_argument("--out-dir", default="results")
     args = ap.parse_args()
@@ -155,7 +163,7 @@ def main() -> None:
     os.makedirs(args.out_dir, exist_ok=True)
 
     tokenizer = load_tokenizer(cfg.model.base_model_id)
-    model = load_model(cfg, args.which)
+    model = load_model(cfg, args.which, quant=args.quant, model_path=args.model_path)
     model.eval()
 
     test = load_dataset("json", data_files={"test": cfg.data.test_file})["test"]
@@ -203,7 +211,8 @@ def main() -> None:
     if args.judge:
         summary["_llm_judge_faithfulness"] = llm_judge(examples_dump)
 
-    result = {"run_name": args.run_name, "which": args.which, "model": cfg.model.base_model_id,
+    result = {"run_name": args.run_name, "which": args.which, "quant": args.quant,
+              "model": args.model_path or cfg.model.base_model_id,
               "n_test": len(test), "metrics": summary}
     out_path = os.path.join(args.out_dir, f"metrics_{args.run_name}.json")
     with open(out_path, "w") as f:

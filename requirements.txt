@@ -23,6 +23,14 @@ scikit-learn>=1.4
 # Experiment tracking
 wandb>=0.17
 
+# Plotting (loss / reward / quantization charts)
+matplotlib>=3.8
+
+# Quantization study (compression). autoawq provides calibrated AWQ 4-bit + a fused-kernel
+# loader. NOTE: do NOT `pip install gptqmodel` into this env — it upgrades torch and breaks
+# the pinned CUDA build. Pin torch first if you add any quantization tooling.
+# autoawq>=0.2.9   # install separately when running the AWQ path
+
 # Optional: flash-attention 2 (big speedup on H100). Install separately, it needs a build step:
 #   pip install flash-attn --no-build-isolation
 # Optional: LLM-as-judge via Anthropic API (used only if ANTHROPIC_API_KEY is set)
